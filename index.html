@@ -1093,7 +1093,7 @@
                 }
             }
 
-            if (controls.isLocked === true) {
+            if (controls && controls.isLocked === true) { // Added null check for controls
                 const time = performance.now();
                 const deltaMove = (time - prevTime) / 1000;
 
