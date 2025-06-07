@@ -91,6 +91,11 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/PointerLockControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/simplex-noise@2.4.0/simplex-noise.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.js"></script>
+    <!-- Post-processing scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/postprocessing/EffectComposer.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/postprocessing/RenderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/shaders/LuminosityHighPassShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/postprocessing/UnrealBloomPass.js"></script>
 
     <script>
         // Configurações
@@ -107,7 +112,7 @@
         };
 
         // Variáveis globais
-        let scene, camera, renderer, controls;
+        let scene, camera, renderer, controls, composer; // Added composer
         let terrain, heightData = [];
         let moveForward = false;
         let moveBackward = false;
@@ -147,6 +152,8 @@
         const textureLoader = new THREE.TextureLoader();
         const gltfLoader = new THREE.GLTFLoader();
         let reaperModel = null;
+        let criticalAssetLoadError = false; // Flag for critical asset loading errors
+        let isGameOver = false; // Flag for game over state
 
         let playerHealth = 5; // Número de vezes que o jogador pode ser atingido antes de morrer
 
@@ -187,6 +194,7 @@
         }
 
         function gameOver() {
+            isGameOver = true; // Set the game over flag
             console.log("Game Over! Você foi derrotado.");
             const gameOverDiv = document.createElement('div');
             gameOverDiv.id = 'game-over';
@@ -221,17 +229,17 @@
             function checkCompletion() {
                 assetsLoaded++;
                 if (assetsLoaded === totalAssets) {
-                    console.log("Todos os assets carregados.");
+                    // console.log("Todos os assets carregados."); // Removed
                     callback(buildingTexture, loadedReaperModel);
                 }
             }
 
-            const buildingTextureUrl = 'https://threejs.org/examples/textures/brick_diffuse.jpg';
-            console.log("Iniciando carregamento da textura do prédio...");
+            const buildingTextureUrl = 'textures/brick_diffuse.jpg'; // Use local path
+            // console.log("Iniciando carregamento da textura do prédio local..."); // Removed
             textureLoader.load(
                 buildingTextureUrl,
                 (texture) => {
-                    console.log("Textura do prédio carregada.");
+                    // console.log("Textura do prédio carregada."); // Removed
                     texture.wrapS = THREE.RepeatWrapping;
                     texture.wrapT = THREE.RepeatWrapping;
                     buildingTexture = texture;
@@ -246,25 +254,53 @@
             );
 
             const reaperModelUrl = 'Forest_Guardian_0504101306_texture.glb';
-            console.log("Iniciando carregamento do modelo do ceifador...");
+            // console.log("Iniciando carregamento do modelo do ceifador..."); // Removed
             gltfLoader.load(
                 reaperModelUrl,
                 (gltf) => {
-                    console.log("Modelo do ceifador carregado.");
+                    // console.log("Modelo do ceifador carregado."); // Removed
                     loadedReaperModel = gltf;
                     checkCompletion();
                 },
                 undefined,
                 (err) => {
                     console.error("Erro ao carregar modelo do ceifador:", err);
+                    criticalAssetLoadError = true; // Set the flag
                     loadedReaperModel = null;
+                    displayAssetLoadError("Falha ao carregar modelo do inimigo (Ceifador). O jogo pode não funcionar corretamente. Tente atualizar a página.");
                     checkCompletion();
                 }
             );
         }
 
+        function displayAssetLoadError(message) {
+            let errorDiv = document.getElementById('assetError');
+            if (!errorDiv) {
+                errorDiv = document.createElement('div');
+                errorDiv.id = 'assetError';
+                errorDiv.style.position = 'absolute';
+                errorDiv.style.top = '40%';
+                errorDiv.style.left = '50%';
+                errorDiv.style.transform = 'translate(-50%, -50%)';
+                errorDiv.style.backgroundColor = 'rgba(255, 0, 0, 0.8)';
+                errorDiv.style.color = 'white';
+                errorDiv.style.padding = '20px';
+                errorDiv.style.borderRadius = '10px';
+                errorDiv.style.textAlign = 'center';
+                errorDiv.style.zIndex = '200'; // Ensure it's on top
+                document.body.appendChild(errorDiv);
+            }
+            errorDiv.innerHTML = `<h2>Erro Crítico</h2><p>${message}</p>`;
+
+            // Hide instructions if they are visible
+            const instructionsPanel = document.getElementById('instructions');
+            if (instructionsPanel) {
+                instructionsPanel.classList.add('hidden');
+            }
+        }
+
         function init(loadedBuildingTexture, loadedReaperModel) {
-            console.log("Iniciando cena...");
+            // console.log("Iniciando cena..."); // Removed
             reaperModel = loadedReaperModel;
 
             scene = new THREE.Scene();
@@ -279,20 +315,35 @@
             renderer.shadowMap.enabled = true;
             document.body.appendChild(renderer.domElement);
 
+            // Post-processing composer
+            composer = new THREE.EffectComposer(renderer);
+            const renderPass = new THREE.RenderPass(scene, camera);
+            composer.addPass(renderPass);
+
+            const bloomPass = new THREE.UnrealBloomPass(
+                new THREE.Vector2(window.innerWidth, window.innerHeight), // Corrected to Vector2 for resolution
+                0.7, // strength
+                0.4, // radius
+                0.85 // threshold
+            );
+            composer.addPass(bloomPass);
+
             const ambientLight = new THREE.AmbientLight(0x404040, 0.8);
             scene.add(ambientLight);
 
             const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
             directionalLight.position.set(1, 1, 0.5).normalize();
             directionalLight.castShadow = true;
-            directionalLight.shadow.mapSize.width = 2048;
-            directionalLight.shadow.mapSize.height = 2048;
+            directionalLight.shadow.mapSize.width = 2048; // Keep for decent quality
+            directionalLight.shadow.mapSize.height = 2048; // Keep for decent quality
             directionalLight.shadow.camera.near = 0.1;
             directionalLight.shadow.camera.far = 500;
-            directionalLight.shadow.camera.left = -100;
-            directionalLight.shadow.camera.right = 100;
-            directionalLight.shadow.camera.top = 100;
-            directionalLight.shadow.camera.bottom = -100;
+            directionalLight.shadow.camera.left = -150; // Increased area coverage
+            directionalLight.shadow.camera.right = 150;
+            directionalLight.shadow.camera.top = 150;
+            directionalLight.shadow.camera.bottom = -150;
+            directionalLight.shadow.bias = -0.0005; // Added bias
+            directionalLight.shadow.normalBias = 0.02; // Added normalBias
             scene.add(directionalLight);
 
             controls = new THREE.PointerLockControls(camera, document.body);
@@ -379,21 +430,24 @@
         }
 
         function finalizeInit() {
-            console.log("Finalizando inicialização (Câmera)...");
+            // console.log("Finalizando inicialização (Câmera)..."); // Removed
             const startX = 0;
             const startZ = 0;
             const startY = getHeightAt(startX, startZ) + 15;
             camera.position.set(startX, startY, startZ);
 
-            window.addEventListener('mousedown', shoot);
-
-            if (reaperModel) {
-                createEnemies();
+            if (criticalAssetLoadError || !reaperModel) {
+                console.error("Critical asset (Reaper Model) failed to load or not available. Game initialization incomplete.");
+                displayAssetLoadError("Modelo essencial do inimigo não carregado. O jogo não pode iniciar corretamente. Por favor, atualize a página.");
+                // 'displayAssetLoadError' already hides the instructions panel.
+                // The event listener for 'instructions' in init() checks 'criticalAssetLoadError'
+                // and will prevent controls.lock() if true.
+                // No need to add 'shoot' listener or call 'createEnemies()'.
             } else {
-                console.error("Modelo do ceifador não disponível para criar inimigos.");
+                window.addEventListener('mousedown', shoot);
+                createEnemies();
+                // console.log("Inicialização completa."); // Removed
             }
-
-            console.log("Inicialização completa.");
         }
 
         function createSkybox() {
@@ -419,10 +473,10 @@
             `;
 
             const uniforms = {
-                topColor: { value: new THREE.Color('#250459') },
-                bottomColor: { value: new THREE.Color('#929496') },
-                offset: { value: 3 },
-                exponent: { value: 0.6 }
+                topColor: { value: new THREE.Color(0x2E405B) },    // Deep Twilight Blue
+                bottomColor: { value: new THREE.Color(0xF39C12) }, // Orange/Amber Horizon
+                offset: { value: 3.0 },                            // Kept as 3.0 as per decision
+                exponent: { value: 0.8 }                           // Sharper horizon glow
             };
 
             const skyGeo = new THREE.SphereGeometry(500, 32, 15);
@@ -471,15 +525,16 @@
                 if (j % 3 === 0) {
                     const currentHeight = height;
                     const dataIndex = i / 3;
-                    heightData[dataIndex] = currentHeight;
+                    // Store an object with x, y, and z coordinates
+                    heightData[dataIndex] = { x: vertices[j], y: currentHeight, z: vertices[j + 2] };
 
                     if (currentHeight < minHeight) minHeight = currentHeight;
                     if (currentHeight > maxHeight) maxHeight = currentHeight;
                 }
             }
 
-            console.log(`createTerrain (COM SIMPLEX, Amplitude=5): heightData populado. Tamanho: ${heightData.length}. ` +
-                        `Min Height: ${minHeight.toFixed(2)}, Max Height: ${maxHeight.toFixed(2)}`);
+            // console.log(`createTerrain (COM SIMPLEX, Amplitude=5): heightData populado. Tamanho: ${heightData.length}. ` +
+            //             `Min Height: ${minHeight.toFixed(2)}, Max Height: ${maxHeight.toFixed(2)}`); // Removed
 
             geometry.computeVertexNormals();
 
@@ -507,84 +562,166 @@
             canvas.height = 512;
             const context = canvas.getContext('2d');
 
-            context.fillStyle = '#4b7f52';
+            // Define colors
+            const baseColor = '#3E6443'; // Darker green
+            const midToneColor = '#5A8C61'; // Mid green
+            const highlightColor = '#7DB887'; // Lighter green
+            const dirtColor = '#8B6913'; // Brownish
+
+            // Fill with base color
+            context.fillStyle = baseColor;
             context.fillRect(0, 0, canvas.width, canvas.height);
 
-            for (let x = 0; x < canvas.width; x++) {
-                for (let y = 0; y < canvas.height; y++) {
-                    const value = Math.random();
-                    if (value < 0.05) {
-                        context.fillStyle = `rgba(100, 100, 100, 0.5)`;
-                        context.fillRect(x, y, 3, 3);
-                    } else if (value < 0.1) {
-                        context.fillStyle = `rgba(50, 150, 50, 0.5)`;
-                        context.fillRect(x, y, 2, 2);
-                    }
+            // Add variations
+            const numPatches = 30000; // Increased number of patches for potentially denser detail
+            for (let i = 0; i < numPatches; i++) {
+                const x = Math.random() * canvas.width;
+                const y = Math.random() * canvas.height;
+
+                const type = Math.random();
+
+                if (type < 0.6) { // Larger mid-tone patches
+                    const size = Math.random() * 4 + 2; // Patch size: 2 to 6
+                    context.fillStyle = `rgba(${parseInt(midToneColor.slice(1,3),16)}, ${parseInt(midToneColor.slice(3,5),16)}, ${parseInt(midToneColor.slice(5,7),16)}, ${Math.random() * 0.2 + 0.2})`; // Alpha: 0.2 to 0.4
+                    context.fillRect(x - size, y - size, size * 2, size * 2);
+                } else if (type < 0.85) { // Smaller highlight patches
+                    const size = Math.random() * 3 + 1; // Patch size: 1 to 4
+                    context.fillStyle = `rgba(${parseInt(highlightColor.slice(1,3),16)}, ${parseInt(highlightColor.slice(3,5),16)}, ${parseInt(highlightColor.slice(5,7),16)}, ${Math.random() * 0.15 + 0.1})`; // Alpha: 0.1 to 0.25
+                    context.fillRect(x - size, y - size, size * 2, size * 2);
+                } else { // Sparse dirt patches
+                    const size = Math.random() * 2 + 1; // Patch size: 1 to 3
+                    context.fillStyle = `rgba(${parseInt(dirtColor.slice(1,3),16)}, ${parseInt(dirtColor.slice(3,5),16)}, ${parseInt(dirtColor.slice(5,7),16)}, ${Math.random() * 0.2 + 0.3})`; // Alpha: 0.3 to 0.5
+                    context.fillRect(x - size / 2, y - size / 2, size, size); // smaller dirt patches
                 }
             }
-
             const texture = new THREE.CanvasTexture(canvas);
             return texture;
         }
 
         function createTrees() {
             const trunkHeight = 30;
+            const baseLeafSphereRadius = 5; // Base radius for leaf spheres
+            const numLeafParts = 3; // Number of spheres per canopy
+
             const trunkGeometry = new THREE.CylinderGeometry(0.5, 1, trunkHeight, 10);
-            const leavesGeometry = new THREE.SphereGeometry(5, 8, 8);
-            
-            leavesGeometry.translate(0, trunkHeight / 2 + 0.5, 0);
-            
+            // Single leaf geometry, will be instanced multiple times per tree with different transforms
+            const leafGeometry = new THREE.SphereGeometry(baseLeafSphereRadius, 6, 5); // Reduced segments for performance
+
             const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.9 });
-            const leavesMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0x2E8B57,
+            const leavesMaterial = new THREE.MeshStandardMaterial({
+                color: 0x2E8B57, // Single color for all leaf parts for now
                 roughness: 0.8,
                 flatShading: true
             });
-            
+
             const trunkMesh = new THREE.InstancedMesh(trunkGeometry, trunkMaterial, config.treesCount);
-            const leavesMesh = new THREE.InstancedMesh(leavesGeometry, leavesMaterial, config.treesCount);
-            
+            // Adjust leavesMesh count for multiple parts per tree
+            const leavesMesh = new THREE.InstancedMesh(leafGeometry, leavesMaterial, config.treesCount * numLeafParts);
+
             trunkMesh.castShadow = true;
             trunkMesh.receiveShadow = true;
             leavesMesh.castShadow = true;
             leavesMesh.receiveShadow = true;
-            
-            const matrix = new THREE.Matrix4();
-            const position = new THREE.Vector3();
-            const quaternion = new THREE.Quaternion();
-            const scale = new THREE.Vector3();
-            
+
+            const trunkMatrix = new THREE.Matrix4();
+            const leafMatrix = new THREE.Matrix4();
+            const basePosition = new THREE.Vector3(); // Position of the base of the trunk
+            const trunkCenterPosition = new THREE.Vector3();
+            const leafPartPosition = new THREE.Vector3();
+            const treeQuaternion = new THREE.Quaternion();
+            const treeOverallScaleVec = new THREE.Vector3(); // For the entire tree (trunk + leaves)
+            const leafPartScaleVec = new THREE.Vector3(); // For individual leaf parts
+
             for (let i = 0; i < config.treesCount; i++) {
                 const x = (Math.random() - 0.5) * config.terrainWidth;
                 const z = (Math.random() - 0.5) * config.terrainHeight;
-                
-                const y = getHeightAt(x, z);
-                
+                const yTerrain = getHeightAt(x, z);
+
                 const slope = getApproximateSlope(x, z);
-                
-                if (slope < 0.5) {
-                    const treeScale = 0.5 + Math.random() * 1.5;
+
+                if (slope < 0.5) { // Only place trees on flatter areas
+                    const randomTreeScale = 0.5 + Math.random() * 1.5;
+                    treeOverallScaleVec.set(randomTreeScale, randomTreeScale, randomTreeScale);
                     
-                    position.set(x, y + trunkHeight / 2 * treeScale, z);
-                    quaternion.setFromEuler(new THREE.Euler(0, Math.random() * Math.PI * 2, 0));
-                    scale.set(treeScale, treeScale, treeScale);
-                    
-                    matrix.compose(position, quaternion, scale);
-                    trunkMesh.setMatrixAt(i, matrix);
-                    
-                    leavesMesh.setMatrixAt(i, matrix);
+                    treeQuaternion.setFromEuler(new THREE.Euler(0, Math.random() * Math.PI * 2, 0));
+
+                    // Trunk position (center of the trunk geometry)
+                    basePosition.set(x, yTerrain, z);
+                    trunkCenterPosition.set(x, yTerrain + (trunkHeight / 2) * randomTreeScale, z);
+                    trunkMatrix.compose(trunkCenterPosition, treeQuaternion, treeOverallScaleVec);
+                    trunkMesh.setMatrixAt(i, trunkMatrix);
+
+                    // Leaves cluster
+                    for (let p = 0; p < numLeafParts; p++) {
+                        const leafClusterBaseY = yTerrain + trunkHeight * randomTreeScale; // Base Y for the start of the canopy
+
+                        let R = baseLeafSphereRadius * randomTreeScale; // Radius for this part, scaled by tree size
+                        let partOffsetX = 0, partOffsetY = 0, partOffsetZ = 0;
+                        let currentPartScaleFactor = 1.0;
+
+                        if (p === 0) { // Main central sphere
+                            partOffsetY = R * 0.5; // Position it slightly higher
+                            currentPartScaleFactor = 1.0;
+                        } else if (p === 1) { // First side sphere
+                            partOffsetX = R * 0.6;
+                            partOffsetY = R * 0.2;
+                            partOffsetZ = R * 0.2;
+                            currentPartScaleFactor = 0.8 + Math.random() * 0.4; // 0.8 to 1.2
+                        } else if (p === 2) { // Second side sphere
+                            partOffsetX = -R * 0.5;
+                            partOffsetY = R * 0.1;
+                            partOffsetZ = -R * 0.7;
+                            currentPartScaleFactor = 0.7 + Math.random() * 0.4; // 0.7 to 1.1
+                        }
+
+                        // Apply tree's overall rotation to the offset, so cluster moves with tree rotation
+                        const offset = new THREE.Vector3(partOffsetX, partOffsetY, partOffsetZ);
+                        // No, don't rotate the offset itself, the offset is in the tree's local space.
+                        // The final leaf matrix will use the tree's quaternion.
+
+                        leafPartPosition.set(
+                            basePosition.x + offset.x,
+                            leafClusterBaseY + offset.y,
+                            basePosition.z + offset.z
+                        );
+
+                        leafPartScaleVec.set(
+                            randomTreeScale * currentPartScaleFactor,
+                            randomTreeScale * currentPartScaleFactor,
+                            randomTreeScale * currentPartScaleFactor
+                        );
+
+                        leafMatrix.compose(leafPartPosition, treeQuaternion, leafPartScaleVec);
+                        leavesMesh.setMatrixAt(i * numLeafParts + p, leafMatrix);
+                    }
+                } else {
+                    // If tree is skipped due to slope, need to ensure its instances are also "skipped"
+                    // or set to a scale of 0 so they don't appear.
+                    // Easiest is to set scale to 0 for the trunk.
+                    trunkMatrix.compose(basePosition, treeQuaternion, new THREE.Vector3(0,0,0));
+                    trunkMesh.setMatrixAt(i, trunkMatrix);
+                    // And for all its potential leaf parts
+                    for (let p = 0; p < numLeafParts; p++) {
+                        leafMatrix.compose(basePosition, treeQuaternion, new THREE.Vector3(0,0,0));
+                        leavesMesh.setMatrixAt(i * numLeafParts + p, leafMatrix);
+                    }
                 }
             }
-            
+
             scene.add(trunkMesh);
             scene.add(leavesMesh);
         }
 
         function createBuildings(loadedTexture) {
-            console.log("Criando prédios...");
+            // console.log("Criando prédios..."); // Removed
             if (!loadedTexture) {
-                console.warn("Textura do prédio não disponível, usando cor fallback.");
+                console.warn("Textura do prédio não disponível, usando cores fallback.");
             }
+
+            const fallbackBuildingColors = [
+                0xaaaaaa, 0xa0a0a0, 0xb0b0b0, 0x999999,
+                0xafafaf, 0x9f9f9f, 0xcccccc, 0xc0c0c0
+            ]; // Added more shades
 
             for (let i = 0; i < config.buildingsCount; i++) {
                 const x = (Math.random() - 0.5) * config.terrainWidth;
@@ -617,8 +754,10 @@
                             metalness: 0.1
                         });
                     } else {
+                        // Fallback material with varied colors
+                        const randomColor = fallbackBuildingColors[Math.floor(Math.random() * fallbackBuildingColors.length)];
                         material = new THREE.MeshStandardMaterial({
-                            color: 0xaaaaaa,
+                            color: randomColor,
                             roughness: 0.7,
                             metalness: 0.2
                         });
@@ -635,7 +774,7 @@
                     buildings.push(building);
                 }
             }
-             console.log("Prédios criados.");
+             // console.log("Prédios criados."); // Removed
         }
 
         function createLakes() {
@@ -650,20 +789,22 @@
                 const lakeSize = 20 + Math.random() * 30;
                 const lakeGeometry = new THREE.CircleGeometry(lakeSize, 32);
                 const lakeMaterial = new THREE.MeshStandardMaterial({
-                    color: 0x0077be,
+                    color: 0x005F9E,       // Slightly deeper blue
                     transparent: true,
-                    opacity: 0.8,
-                    roughness: 0.1,
-                    metalness: 0.9,
+                    opacity: 0.85,          // Slightly more opaque
+                    roughness: 0.15,        // Slightly rougher for softer reflections
+                    metalness: 0.8,         // Still quite reflective
                 });
                 
                 const lake = new THREE.Mesh(lakeGeometry, lakeMaterial);
                 lake.rotation.x = -Math.PI / 2;
+                lake.receiveShadow = true; // Allow shadows on the lake surface
                 
-                const lakeY = point.y + 1.0;
+                // Adjust lakeY calculation to place the lake surface slightly above the lowest terrain point
+                const lakeY = point.y + 0.1;
                 lake.position.set(point.x, lakeY, point.z);
 
-                console.log(`Criando lago ${index + 1} em:`, lake.position, `Tamanho: ${lakeSize}`);
+                // console.log(`Criando lago ${index + 1} em:`, lake.position, `Tamanho: ${lakeSize}`); // Removed
 
                 scene.add(lake);
             });
@@ -692,22 +833,24 @@
                 }
             }
             
-            console.log("Pontos baixos encontrados para lagos:", lowPoints);
+            // console.log("Pontos baixos encontrados para lagos:", lowPoints); // Removed
             return lowPoints;
         }
 
         function getHeightAt(x, z) {
-            if (!terrain) {
+            if (!terrain || !terrain.parent) { // Check if terrain exists and is added to the scene
+                console.warn("getHeightAt called before terrain is initialized or added to scene. Returning 0.");
                 return 0;
             }
-            rayOrigin.set(x, 100, z);
+            rayOrigin.set(x, 100, z); // Position raycaster origin high above
             terrainRaycaster.set(rayOrigin, downVector);
             const intersects = terrainRaycaster.intersectObject(terrain);
+
             if (intersects.length > 0) {
-                const heightValue = intersects[0].point.y;
-                return heightValue;
+                return intersects[0].point.y;
             } else {
-            return 0;
+                console.warn("getHeightAt: Raycaster did not intersect terrain at", x, z, ". Returning 0.");
+                return 0; // Default height if no intersection
             }
         }
 
@@ -726,9 +869,15 @@
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight); // Update composer size
         }
 
         function animate() {
+            if (isGameOver) {
+                // Optionally, you could render one last static frame here if desired,
+                // but for a full stop, just returning is fine.
+                return;
+            }
             requestAnimationFrame(animate);
             
             const delta = clock.getDelta();
@@ -787,7 +936,8 @@
                         // Position based on enemy screen position
                         const enemyPos = enemy.position.clone().project(camera);
                         const x = (enemyPos.x * 0.5 + 0.5) * window.innerWidth;
-                        const y = ((enemyPos.y * 0.5 + 0.5)) * window.innerHeight;
+                        // Correct Y-coordinate: NDC Y is -1 (bottom) to 1 (top), screen Y is 0 (top) to window.innerHeight (bottom)
+                        const y = (-enemyPos.y * 0.5 + 0.5) * window.innerHeight;
                         
                         scoreText.style.left = `${x}px`;
                         scoreText.style.top = `${y}px`;
@@ -893,30 +1043,35 @@
                         }
 
                         if (time > currentEnemy.userData.lastShotTime + enemyFireRate) {
-    const shootDirection = new THREE.Vector3();
-    shootDirection.copy(directionToPlayer);
-    
-    const enemyProjectileGeometry = new THREE.SphereGeometry(0.3, 8, 8);
-    const enemyProjectileMaterial = new THREE.MeshBasicMaterial({ color: 0xffa500 });
-    const enemyProjectile = new THREE.Mesh(enemyProjectileGeometry, enemyProjectileMaterial);
+                            const projectileRadius = 0.25;
+                            const projectileHeight = 0.8;
+                            const enemyProjectileGeometry = new THREE.ConeGeometry(projectileRadius, projectileHeight, 8);
+                            const enemyProjectileMaterial = new THREE.MeshBasicMaterial({ color: 0xcc0000 }); // Dark/Blood Red
+                            const enemyProjectile = new THREE.Mesh(enemyProjectileGeometry, enemyProjectileMaterial);
 
-    // Calcular posição do tiro baseado na direção que o inimigo está olhando
-    const offset = directionToPlayer.clone().multiplyScalar(1); // O valor -2 move o tiro para trás
-    
-    
-    enemyProjectile.position.copy(currentEnemy.position).add(offset);
-    
-    const aimOffset = new THREE.Vector3();
-    aimOffset.subVectors(camera.position, enemyProjectile.position).normalize();
-    
-    enemyProjectile.userData.velocity = aimOffset.multiplyScalar(enemyProjectileSpeed);
-    enemyProjectile.userData.lifeTime = enemyProjectileLifetime;
+                            // Determine the direction from enemy to player (already calculated as directionToPlayer)
+                            // directionToPlayer is normalized.
 
-    scene.add(enemyProjectile);
-    enemyProjectiles.push(enemyProjectile);
+                            // Spawn projectile slightly in front of the enemy.
+                            // Enemy model scale is 10. A small offset like 2 or 3 units from origin might be suitable.
+                            // Or relative to its bounding box if available. Let's use a fixed offset for simplicity.
+                            const spawnOffsetDistance = 4.0; // How far in front of the enemy model's origin
+                            const projectileSpawnPosition = currentEnemy.position.clone().add(directionToPlayer.clone().multiplyScalar(spawnOffsetDistance));
+                            enemyProjectile.position.copy(projectileSpawnPosition);
 
-    currentEnemy.userData.lastShotTime = time;
-}
+                            // Align cone's Y-axis (its height, with the point at positive Y) with the shooting direction.
+                            // The directionToPlayer is from enemy towards player, which is what we want for cone orientation & velocity.
+                            const defaultConeUp = new THREE.Vector3(0, 1, 0);
+                            enemyProjectile.quaternion.setFromUnitVectors(defaultConeUp, directionToPlayer.clone());
+
+                            enemyProjectile.userData.velocity = directionToPlayer.clone().multiplyScalar(enemyProjectileSpeed);
+                            enemyProjectile.userData.lifeTime = enemyProjectileLifetime;
+
+                            scene.add(enemyProjectile);
+                            enemyProjectiles.push(enemyProjectile);
+
+                            currentEnemy.userData.lastShotTime = time;
+                        }
                     }
 
                     const enemyBox = new THREE.Box3().setFromObject(currentEnemy);
@@ -986,7 +1141,7 @@
                         controls.moveRight(moveX);
                         controls.getObject().position.y = proposedPosition.y;
                         velocity.z = 0;
-                        console.log("Colisão: Movendo apenas X");
+                        // console.log("Colisão: Movendo apenas X"); // Removed
                     } else {
                         const testPosZ = currentPosition.clone();
                         testPosZ.z += moveZ;
@@ -995,11 +1150,11 @@
                             controls.moveForward(moveZ);
                             controls.getObject().position.y = proposedPosition.y;
                             velocity.x = 0;
-                            console.log("Colisão: Movendo apenas Z");
+                            // console.log("Colisão: Movendo apenas Z"); // Removed
                         } else {
                             velocity.x = 0;
                             velocity.z = 0;
-                            console.log("Colisão: Bloqueado");
+                            // console.log("Colisão: Bloqueado"); // Removed
                         }
                     }
                 }
@@ -1015,7 +1170,8 @@
                 prevTime = time;
             }
             
-            renderer.render(scene, camera);
+            // renderer.render(scene, camera); // Old rendering
+            composer.render(); // New rendering with post-processing
         }
 
         function checkCollision(position, radius) {
@@ -1036,7 +1192,7 @@
         }
 
         function createEnemies() {
-            console.log("Criando inimigos CEIFADORES...");
+            // console.log("Criando inimigos CEIFADORES..."); // Removed
 
             if (!reaperModel) {
                 console.error("Modelo do robo não está carregado!");
@@ -1179,17 +1335,30 @@
         }
 
         function shoot() {
-            const projectileGeometry = new THREE.SphereGeometry(0.4, 8, 8);
-            const projectileMaterial = new THREE.MeshBasicMaterial({ color: '#fc3503' });
+            const projectileRadius = 0.15;
+            const projectileHeight = 1.0;
+            // Using CylinderGeometry for an elongated "bolt" shape
+            const projectileGeometry = new THREE.CylinderGeometry(projectileRadius, projectileRadius, projectileHeight, 8);
+            const projectileMaterial = new THREE.MeshBasicMaterial({ color: 0xFFEF00 }); // Bright yellow/gold
             const projectile = new THREE.Mesh(projectileGeometry, projectileMaterial);
 
-            projectile.position.copy(camera.position);
-
             const direction = new THREE.Vector3();
-            camera.getWorldDirection(direction);
-            projectile.userData.velocity = direction.multiplyScalar(projectileSpeed);
+            camera.getWorldDirection(direction); // Gets the direction the camera is looking
 
-            projectile.userData.lifeTime = 5;
+            // Position and Orientation
+            // Spawn slightly in front of the camera to avoid clipping through the player/camera
+            const spawnOffsetDistance = 2.0; // How far in front to spawn
+            const spawnOffset = direction.clone().multiplyScalar(spawnOffsetDistance);
+            projectile.position.copy(camera.position).add(spawnOffset);
+
+            // Align cylinder's main axis (Y) with the direction of travel
+            // The default CylinderGeometry is aligned with the Y-axis.
+            // We need to rotate it to align with the 'direction' vector.
+            const defaultCylinderUp = new THREE.Vector3(0, 1, 0);
+            projectile.quaternion.setFromUnitVectors(defaultCylinderUp, direction.clone().normalize());
+
+            projectile.userData.velocity = direction.clone().multiplyScalar(projectileSpeed);
+            projectile.userData.lifeTime = 5; // Lifetime in seconds
 
             scene.add(projectile);
             projectiles.push(projectile);
