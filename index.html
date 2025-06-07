@@ -217,7 +217,6 @@
 
         // Inicialização
         loadGameAssets(init);
-        animate();
 
         function loadGameAssets(callback) {
             let assetsLoaded = 0;
@@ -448,6 +447,7 @@
                 createEnemies();
                 // console.log("Inicialização completa."); // Removed
             }
+            animate();
         }
 
         function createSkybox() {
