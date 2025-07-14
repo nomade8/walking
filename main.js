@@ -92,11 +92,11 @@ function createExplosion(position) {
 }
 
 function shoot() {
-    const projectileRadius = 0.15;
+    const projectileRadius = 2.15;
     const projectileHeight = 1.0;
     // Using CylinderGeometry for an elongated "bolt" shape
     const projectileGeometry = new THREE.CylinderGeometry(projectileRadius, projectileRadius, projectileHeight, 8);
-    const projectileMaterial = new THREE.MeshBasicMaterial({ color: 0xFFEF00 }); // Bright yellow/gold
+    const projectileMaterial = new THREE.MeshBasicMaterial({ color: 0xFFEF00, transparent: true, opacity: 0.7 }); // Bright yellow/gold
     const projectile = new THREE.Mesh(projectileGeometry, projectileMaterial);
 
     const direction = new THREE.Vector3();
