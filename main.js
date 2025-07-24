@@ -954,7 +954,7 @@ function animate() {
                      
                     setTimeout(() => {
                         createEnemiesWithSpeed(currentEnemySpeed);
-                    }, 3000); // 3 segundos de atraso
+                    }, 5000); // 3 segundos de atraso
 
                     setTimeout(() => {
                     scoreText1.style.opacity = '0';
